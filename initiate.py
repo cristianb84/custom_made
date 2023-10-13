@@ -4,8 +4,7 @@ import os
 import shutil
 import argparse
 
-def create_folders(task_name):
-    base_dir = os.path.expanduser('~/Desktop/Synack')
+def create_folders(base_dir, task_name):
     task_dir = os.path.join(base_dir, task_name)
 
     folders = [
@@ -14,7 +13,8 @@ def create_folders(task_name):
         os.path.join(task_dir, 'Burp'),
         os.path.join(task_dir, 'ferox'),
         os.path.join(task_dir, 'writeup'),
-	os.path.join(task_dir, 'Downloads'),
+        os.path.join(task_dir, 'Downloads'),
+	os.path.join(task_dir, 'sslscan'),
     ]
 
     for folder in folders:
@@ -24,9 +24,10 @@ def create_folders(task_name):
         except Exception as e:
             print(f"Failed to create {folder}. Reason: {str(e)}")
 
-def copy_template_file(task_name):
-    source_file = os.path.expanduser('~/Documents/bb-template.ctb')
-    dest_file = os.path.expanduser(f'~/Desktop/Synack/{task_name}/writeup/{task_name}.ctb')
+def copy_template_file(base_dir, task_name):
+    # Construct the path to bb-template.ctb relative to the script's location
+    source_file = os.path.join(os.path.dirname(__file__), 'bb-template.ctb')
+    dest_file = os.path.expanduser(os.path.join(base_dir, task_name, 'writeup', f'{task_name}.ctb'))
 
     try:
         shutil.copy2(source_file, dest_file)
@@ -36,11 +37,12 @@ def copy_template_file(task_name):
 
 def main():
     parser = argparse.ArgumentParser(description="Initialize Bug Bounty Task Folders")
-    parser.add_argument('-t', '--task', required=True, help="Task name")
+    parser.add_argument('base_dir', help="Base directory where the task folder will be created")
+    parser.add_argument('task_name', help="Task name")
     args = parser.parse_args()
 
-    create_folders(args.task)
-    copy_template_file(args.task)
+    create_folders(os.path.expanduser(args.base_dir), args.task_name)
+    copy_template_file(os.path.expanduser(args.base_dir), args.task_name)
 
 if __name__ == "__main__":
     main()
