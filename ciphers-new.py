@@ -62,7 +62,7 @@ def get_security_level(cipher):
 
             return security, alert_categories
         else:
-            return 'Unavailable', {}
+            return 'Not Found', {}  # Return "Not Found" for unavailable ciphers
     except Exception as e:
         print(f"Error retrieving cipher information: {str(e)}")
         return 'Error', {}
@@ -129,7 +129,7 @@ def run_testssl(target, testssl_path):
     color_info = "\033[32m"  # Green, similar to the Info color
     color_reset = "\033[0m"  # Reset to default color
 
-    color_codes = {'Weak': color_warning, 'Insecure': color_danger, 'Secure': color_info, 'Recommended': color_info, 'Unknown': color_reset}
+    color_codes = {'Weak': color_warning, 'Insecure': color_danger, 'Secure': color_info, 'Recommended': color_info, 'Unknown': color_reset, 'Not Found': color_reset}
 
     testssl_script = os.path.join(testssl_path, "testssl.sh")
     try:
@@ -147,6 +147,10 @@ def run_testssl(target, testssl_path):
                 cipher = parts[-1]
                 security_level, alert_categories = get_security_level(cipher)
 
+                if security_level == 'Not Found':
+                    print(f"{line}\tCipher not found on ciphersuite.info")
+                    continue
+
                 # Group and color alert names only
                 colored_alerts = []
                 for category in ['Danger', 'Warning', 'Info']:
@@ -159,7 +163,13 @@ def run_testssl(target, testssl_path):
                 level_color = color_codes.get(security_level, color_reset)
                 colored_level = f"{level_color}{security_level}{color_reset}"
 
-                print(f"{line}\t{colored_level} [{'; '.join(colored_alerts)}]")
+                # Check if there are any alerts to display
+                if colored_alerts:
+                    alert_info = f" [{'; '.join(colored_alerts)}]"
+                else:
+                    alert_info = ""
+
+                print(f"{line}\t{colored_level}{alert_info}")
     except Exception as e:
         print(f"Failed to run testssl.sh: {str(e)}")
 
