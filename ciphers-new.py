@@ -10,6 +10,25 @@ from bs4 import BeautifulSoup
 def colorize(text, color_code):
     return f"\033[{color_code}m{text}\033[0m"
 
+def get_ciphers_from_url(tls_version):
+    security_levels = ['recommended', 'secure']
+    ciphers = []
+    for security_level in security_levels:
+        # Adjust the URL depending on the TLS version
+        if tls_version == 'tls1.2':
+            version_url = 'tls12'
+        elif tls_version == 'tls1.3':
+            version_url = 'xtls13'
+        else:
+            raise ValueError("Unsupported TLS version")
+        url = f'https://ciphersuite.info/cs/?security={security_level}&tls={version_url}'
+        response = requests.get(url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            cipher_elements = soup.select('ul.prettylist li a span.break-all')
+            for element in cipher_elements:
+                ciphers.append(element.text.strip())
+    return ciphers
 
 def check_for_updates(testssl_path):
     """
@@ -194,6 +213,9 @@ if __name__ == '__main__':
         '-t', '--target', help='The target system (ip:port)', default=None)
     parser.add_argument(
         '-c', '--cipher', help='Specific cipher to test', default=None)
+    parser.add_argument(
+        '-l', '--tls-version', help='Specify the TLS version to grab Secure and Recommended ciphers for', choices=['TLS1.2', 'TLS1.3'], default=None)
+
 
     args = parser.parse_args()
 
@@ -237,6 +259,12 @@ if __name__ == '__main__':
         # Check for updates and run testssl.sh
         check_for_updates(testssl_path)
         run_testssl(args.target, testssl_path)
+    elif args.tls_version:
+        tls_version = args.tls_version.replace('TLS', 'tls')  # Convert TLS1.2 or TLS1.3 to tls12 or tls13
+        ciphers = get_ciphers_from_url(tls_version)
+        for cipher in ciphers:
+            print(cipher)
+
     else:
         parser.print_help(sys.stderr)
         sys.exit(1)
