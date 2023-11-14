@@ -15,6 +15,7 @@ def create_folders(base_dir, task_name):
         os.path.join(task_dir, 'writeup'),
         os.path.join(task_dir, 'Downloads'),
 	os.path.join(task_dir, 'sslscan'),
+        os.path.join(task_dir, 'Screenshots'),
     ]
 
     for folder in folders:
