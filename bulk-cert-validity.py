@@ -50,22 +50,21 @@ def main():
                         help='Comma-separated list of ports to check. Default is 443.')
     args = parser.parse_args()
 
-    default_ports = args.ports.split(',')
+    # Remove duplicates by converting to a set and back to a list
+    default_ports = list(set(args.ports.split(',')))
 
     with open(args.file, 'r') as file:
         ips_ports = file.read().strip().split('\n')
 
     for ip_port in ips_ports:
-        # If no port specified, use None
-        ip, port = (ip_port.split(':') + [None])[:2]
+        ip, *port_details = ip_port.split(':')
+        port = port_details[0] if port_details else None
         if port is None:
-            # No port specified in the file, use the ports from the argument
             for port in default_ports:
-                result = check_cert(ip, port)  # This line is okay now
+                result = check_cert(ip, port)
                 print(f"{ip}:{port} -> {result}")
         else:
-            # Port specified in the file, use that
-            result = check_cert(ip, port)  # This line is okay now
+            result = check_cert(ip, port)
             print(f"{ip}:{port} -> {result}")
 
 
