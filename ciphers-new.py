@@ -26,7 +26,6 @@ color_codes = {'weak': color_warning,
 def colorize(text, color_code):
     return f"\033[{color_code}m{text}\033[0m"
 
-
 def get_ciphers_from_url(tls_version):
     security_levels = ['recommended', 'secure']
     ciphers = []
@@ -46,7 +45,6 @@ def get_ciphers_from_url(tls_version):
             for element in cipher_elements:
                 ciphers.append(element.text.strip())
     return ciphers
-
 
 def check_for_updates(testssl_path):
     """
@@ -158,28 +156,35 @@ def get_security_level(cipher, iana_cipher_mapping):
                 badge_span = soup.find('span', class_='badge')
                 security = badge_span.text.strip() if badge_span else 'Unknown'
 
-                # Initializing alert categories
-                alert_categories = {'Danger': [], 'Warning': [], 'Info': []}
+                # Overriding security level if IANA recommends "N"
+                if rec_value == 'N' and security.lower() == 'secure':
+                    security = 'Weak'
+                    alert_categories = {'Danger': [],
+                                        'Warning': [("IANA not recommended", "The cipher is not recommended by IANA.")],
+                                        'Info': []}
+                else:
+                    # Initializing alert categories
+                    alert_categories = {'Danger': [], 'Warning': [], 'Info': []}
 
-                # Extracting alert details
-                alerts = soup.find_all('div', class_='alert')
-                for alert in alerts:
-                    classes = alert.get('class', [])
-                    if 'alert-danger' in classes:
-                        category = 'Danger'
-                    elif 'alert-warning' in classes:
-                        category = 'Warning'
-                    elif 'alert-info' in classes:
-                        category = 'Info'
-                    else:
-                        category = 'Unknown'
+                    # Extracting alert details
+                    alerts = soup.find_all('div', class_='alert')
+                    for alert in alerts:
+                        classes = alert.get('class', [])
+                        if 'alert-danger' in classes:
+                            category = 'Danger'
+                        elif 'alert-warning' in classes:
+                            category = 'Warning'
+                        elif 'alert-info' in classes:
+                            category = 'Info'
+                        else:
+                            category = 'Unknown'
 
-                    strong_tag = alert.find('strong')
-                    p_tag = alert.find('p')
-                    if strong_tag and p_tag:
-                        name = strong_tag.text.strip(': ')
-                        description = p_tag.text.strip()
-                        alert_categories.setdefault(category, []).append((name, description))
+                        strong_tag = alert.find('strong')
+                        p_tag = alert.find('p')
+                        if strong_tag and p_tag:
+                            name = strong_tag.text.strip(': ')
+                            description = p_tag.text.strip()
+                            alert_categories.setdefault(category, []).append((name, description))
             else:
                 security = 'Not Found'
                 alert_categories = {}
@@ -189,6 +194,17 @@ def get_security_level(cipher, iana_cipher_mapping):
             alert_categories = {}
 
     return security, alert_categories, dtls_value, rec_value
+
+def list_iana_recommended_ciphers():
+    iana_cipher_mapping = get_iana_cipher_mapping()
+    if iana_cipher_mapping:
+        print("Ciphers recommended by IANA:")
+        # Sort ciphers alphabetically for better readability
+        for cipher_name, data in sorted(iana_cipher_mapping.items()):
+            if data['rec'] == 'Y':
+                print(cipher_name)
+    else:
+        print("Failed to fetch or parse IANA TLS parameters.")
 
 def find_testssl():
     # Step 1: Check globally
@@ -353,7 +369,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-c', '--cipher', help='Specific cipher to test', default=None)
     parser.add_argument(
-        '-l', '--tls-version', help='Specify the TLS version to grab Secure and Recommended ciphers for (source: ciphersuite.info)', choices=['TLS1.2', 'TLS1.3'], default=None)
+	'-l', '--tls-version', help='Specify the TLS version to grab Secure and Recommended ciphers for (source: ciphersuite.info) or "IANA" for IANA recommended ciphers.', choices=['TLS1.2', 'TLS1.3', 'IANA'], default=None)
     parser.add_argument(
         '-light', '--light', action='store_true', help='Output just the essential information: cipher, IANA DTLS-OK, IANA Recommended, security status, and alerts', default=None)
     parser.add_argument(
@@ -365,17 +381,16 @@ if __name__ == '__main__':
     light_mode = args.light
 
     # Fetch and parse IANA TLS parameters upfront if needed
-    if args.list_iana_recommended or args.cipher or args.target:
+    if args.tls_version == 'IANA' or args.cipher or args.target:
         iana_cipher_mapping = get_iana_cipher_mapping()
         if not iana_cipher_mapping:
             sys.exit("Failed to fetch or parse IANA TLS parameters.")
 
-    if args.list_iana_recommended:
+    if args.tls_version == 'IANA':
         if iana_cipher_mapping:
             print("Ciphers recommended by IANA:")
             # Sort ciphers alphabetically for better readability
-            for cipher_name in sorted(iana_cipher_mapping.keys()):
-                data = iana_cipher_mapping[cipher_name]
+            for cipher_name, data in sorted(iana_cipher_mapping.items()):
                 if data['rec'] == 'Y':
                     print(cipher_name)
         else:
@@ -383,9 +398,6 @@ if __name__ == '__main__':
         sys.exit(0)
 
     elif args.cipher:
-        # Fetch and parse IANA TLS parameters
-        iana_cipher_mapping = get_iana_cipher_mapping()
-
         # Test a specific cipher
         security_level, alert_categories, dtls_value, rec_value = get_security_level(args.cipher, iana_cipher_mapping)
 
@@ -439,7 +451,7 @@ if __name__ == '__main__':
 
         # Check for updates and run testssl.sh
         check_for_updates(testssl_path)
-        run_testssl(args.target, testssl_path, iana_cipher_mapping, light_mode, noinfo=args.noinfo)
+        run_testssl(args.target, testssl_path, iana_cipher_mapping, light_mode=args.light, noinfo=args.noinfo)
     elif args.tls_version:
         tls_version = args.tls_version.replace('TLS', 'tls')  # Convert TLS1.2 or TLS1.3 to tls12 or tls13
         ciphers = get_ciphers_from_url(tls_version)
