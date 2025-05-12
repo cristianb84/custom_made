@@ -33,7 +33,7 @@ def parse_cert_output(stdout):
     return subject, san, issuer, not_before, not_after
 
 def split_dn(dn):
-    """Turn “commonName=foo/organizationName=bar” into a list of lines."""
+    """Turn “commonName=foo/organizationName=bar” into a list of parts."""
     return dn.split('/') if dn else []
 
 def check_cert(ip, port):
@@ -51,7 +51,6 @@ def check_cert(ip, port):
     if not nb or not na:
         return {"error": "Certificate information not found"}
 
-    # compute days until/since expiry
     na_dt = datetime.strptime(na, "%Y-%m-%dT%H:%M:%S")
     days = (na_dt - datetime.now()).days
     if days < 0:
@@ -95,22 +94,24 @@ def main():
                 print(f"  Error     : {info['error']}\n")
                 continue
 
-            # color the status
+            # Color the status and inline the validity window
             status_colored = red(info['status_text']) if info['expired'] else green(info['status_text'])
-            print(f"  Status    : {status_colored}")
-            print(f"  Valid from: {info['not_before']}")
-            print(f"  Expires on: {info['not_after']}")
+            print(f"  Status    : {status_colored} ({info['not_before']} -> {info['not_after']})")
 
+            # Subject on one line, pipes between RDNs
             if info['subject']:
-                print("  Subject   :")
-                for line in info['subject']:
-                    print(f"    • {line}")
+                subj_line = " | ".join(info['subject'])
+                print(f"  Subject   : {subj_line}")
+
+            # SAN as before
             if info['san']:
                 print(f"  SAN       : {info['san']}")
+
+            # Issuer on one line
             if info['issuer']:
-                print("  Issuer    :")
-                for line in info['issuer']:
-                    print(f"    • {line}")
+                iss_line = " | ".join(info['issuer'])
+                print(f"  Issuer    : {iss_line}")
+
             print()  # blank line between entries
 
 if __name__ == "__main__":
