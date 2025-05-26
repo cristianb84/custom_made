@@ -135,65 +135,79 @@ def get_iana_cipher_mapping():
         return {}
 
 def get_security_level(cipher, iana_cipher_mapping):
-    # Retrieve IANA information first
     iana_info = iana_cipher_mapping.get(cipher, {'dtls': 'Unknown', 'rec': 'Unknown'})
     dtls_value = iana_info['dtls']
     rec_value = iana_info['rec']
 
-    # If IANA recommends the cipher, set security to 'Secure' and skip fetching alerts
-    if rec_value == 'Y':
-        security = 'Secure'
-        alert_categories = {'Danger': [], 'Warning': [], 'Info': []}
-    else:
-        # Fetch security level and alerts from ciphersuite.info
+    # Defaults
+    ciphersuite_level = 'Unknown'
+    ciphersuite_alerts = {'Danger': [], 'Warning': [], 'Info': []}
+    ciphersuite_available = False
+
+    # Attempt to fetch from ciphersuite.info
+    try:
         url = f'https://ciphersuite.info/cs/{cipher}/'
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            ciphersuite_available = True
+            soup = BeautifulSoup(response.content, 'html.parser')
+            badge_span = soup.find('span', class_='badge')
+            ciphersuite_level = badge_span.text.strip() if badge_span else 'Unknown'
 
-                # Extracting the security level from ciphersuite.info
-                badge_span = soup.find('span', class_='badge')
-                security = badge_span.text.strip() if badge_span else 'Unknown'
-
-                # Overriding security level if IANA recommends "N"
-                if rec_value == 'N' and security.lower() == 'secure':
-                    security = 'Weak'
-                    alert_categories = {'Danger': [],
-                                        'Warning': [("IANA not recommended", "The cipher is not recommended by IANA.")],
-                                        'Info': []}
+            alerts = soup.find_all('div', class_='alert')
+            for alert in alerts:
+                classes = alert.get('class', [])
+                if 'alert-danger' in classes:
+                    category = 'Danger'
+                elif 'alert-warning' in classes:
+                    category = 'Warning'
+                elif 'alert-info' in classes:
+                    category = 'Info'
                 else:
-                    # Initializing alert categories
-                    alert_categories = {'Danger': [], 'Warning': [], 'Info': []}
+                    continue
 
-                    # Extracting alert details
-                    alerts = soup.find_all('div', class_='alert')
-                    for alert in alerts:
-                        classes = alert.get('class', [])
-                        if 'alert-danger' in classes:
-                            category = 'Danger'
-                        elif 'alert-warning' in classes:
-                            category = 'Warning'
-                        elif 'alert-info' in classes:
-                            category = 'Info'
-                        else:
-                            category = 'Unknown'
+                strong_tag = alert.find('strong')
+                p_tag = alert.find('p')
+                if strong_tag and p_tag:
+                    name = strong_tag.text.strip(': ')
+                    description = p_tag.text.strip()
+                    ciphersuite_alerts.setdefault(category, []).append((name, description))
+    except Exception:
+        ciphersuite_level = 'Not Found'
+        ciphersuite_available = False
 
-                        strong_tag = alert.find('strong')
-                        p_tag = alert.find('p')
-                        if strong_tag and p_tag:
-                            name = strong_tag.text.strip(': ')
-                            description = p_tag.text.strip()
-                            alert_categories.setdefault(category, []).append((name, description))
-            else:
-                security = 'Not Found'
-                alert_categories = {}
-        except Exception as e:
-            print(f"Error retrieving cipher information: {str(e)}")
-            security = 'Error'
-            alert_categories = {}
+    # Final decision
+    alert_categories = {'Danger': [], 'Warning': [], 'Info': []}
+    final_level = ciphersuite_level
 
-    return security, alert_categories, dtls_value, rec_value
+    if rec_value == 'Y':
+        final_level = 'Secure'
+        # IANA is authoritative — suppress all alerts
+        alert_categories = {'Danger': [], 'Warning': [], 'Info': []}
+
+    elif rec_value == 'N':
+        # Cipher is not recommended by IANA
+        if ciphersuite_level.lower() in ['secure', 'recommended']:
+            final_level = 'Weak'
+            alert_categories['Warning'].append(
+                ("IANA not recommended", "The cipher is not recommended by IANA.")
+            )
+        elif ciphersuite_level.lower() in ['weak', 'insecure']:
+            final_level = ciphersuite_level
+            # Use only ciphersuite alerts (no need to repeat IANA again)
+            alert_categories = ciphersuite_alerts
+        else:
+            # Ciphersuite not available — show just IANA alert
+            final_level = 'Weak'
+            alert_categories['Warning'].append(
+                ("IANA not recommended", "The cipher is not recommended by IANA.")
+            )
+
+    else:  # rec is Unknown
+        final_level = ciphersuite_level
+        alert_categories = ciphersuite_alerts
+
+    return final_level, alert_categories, dtls_value, rec_value
 
 def list_iana_recommended_ciphers():
     iana_cipher_mapping = get_iana_cipher_mapping()
