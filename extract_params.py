@@ -4,26 +4,31 @@ import re
 
 def extract_unique_parameters(file_path):
     try:
-        # Read the entire file
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
 
-        # Attempt to locate JSON fragments robustly
-        json_fragments = extract_json_fragments(content)
         unique_keys = set()
 
+        # Try to parse the whole file as JSON (Postman collection etc.)
+        try:
+            parsed = json.loads(content)
+            unique_keys.update(extract_individual_keys(parsed))
+        except json.JSONDecodeError:
+            pass
+
+        # Fallback: extract brace-based JSON fragments
+        json_fragments = extract_json_fragments(content)
         for fragment in json_fragments:
             try:
-                # Parse the JSON fragment
                 data = json.loads(fragment)
-
-                # Add the keys to the unique_keys set
                 unique_keys.update(extract_individual_keys(data))
             except json.JSONDecodeError:
-                # Skip invalid JSON fragments
                 pass
 
-        # Sort and print the unique keys
+        # Extract query/form/cookie parameter keys
+        unique_keys.update(extract_kv_pairs(content))
+
+        # Print sorted unique keys
         for key in sorted(unique_keys):
             print(key)
 
@@ -34,25 +39,30 @@ def extract_unique_parameters(file_path):
 
 def extract_json_fragments(content):
     """
-    Extract potential JSON fragments from the content.
+    Extract JSON objects or arrays from content using brace/bracket matching.
     """
     json_fragments = []
-    braces_stack = []
+    stack = []
     current_fragment = []
+    open_chars = {'{': '}', '[': ']'}
+    close_chars = {'}': '{', ']': '['}
 
     for char in content:
-        if char == '{':
-            if not braces_stack:
+        if char in open_chars:
+            if not stack:
                 current_fragment = []
-            braces_stack.append(char)
+            stack.append(char)
             current_fragment.append(char)
-        elif char == '}':
-            if braces_stack:
-                braces_stack.pop()
+        elif char in close_chars:
+            if stack and stack[-1] == close_chars[char]:
+                stack.pop()
                 current_fragment.append(char)
-                if not braces_stack:
-                    json_fragments.append(''.join(current_fragment))
-        elif braces_stack:
+                if not stack:
+                    fragment = ''.join(current_fragment)
+                    json_fragments.append(fragment)
+            elif stack:
+                stack.pop()
+        elif stack:
             current_fragment.append(char)
 
     return json_fragments
@@ -60,6 +70,7 @@ def extract_json_fragments(content):
 def extract_individual_keys(json_obj):
     """
     Recursively extract all individual keys from a JSON object.
+    Also attempts to parse JSON strings (e.g. Postman raw bodies).
     """
     keys = set()
     if isinstance(json_obj, dict):
@@ -69,11 +80,24 @@ def extract_individual_keys(json_obj):
     elif isinstance(json_obj, list):
         for item in json_obj:
             keys.update(extract_individual_keys(item))
+    elif isinstance(json_obj, str):
+        try:
+            parsed = json.loads(json_obj)
+            keys.update(extract_individual_keys(parsed))
+        except (json.JSONDecodeError, TypeError):
+            pass
     return keys
 
+def extract_kv_pairs(content):
+    """
+    Extract parameter keys from query strings, form data, cookies, headers, and key-value like content.
+    """
+    pattern = re.compile(r'(?<!\w)([\w\[\]\.]+)(?==)')
+    return set(pattern.findall(content))
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract unique JSON parameter names from a file.")
-    parser.add_argument("file", help="Path to the file containing JSON objects.")
+    parser = argparse.ArgumentParser(description="Extract unique JSON and query parameter names from a file.")
+    parser.add_argument("file", help="Path to the file to scan for parameters.")
     args = parser.parse_args()
 
     extract_unique_parameters(args.file)
